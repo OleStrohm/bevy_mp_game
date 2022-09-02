@@ -7,7 +7,9 @@ use bevy::prelude::*;
 use bevy_renet::renet::{ClientAuthentication, RenetClient, RenetConnectionConfig};
 use bevy_renet::{run_if_client_connected, RenetClientPlugin};
 
-use crate::message::{panic_on_error, ClientMessage, ServerMessage, PROTOCOL_ID};
+use crate::message::{
+    panic_on_error, ClientUnreliable, ServerBlocking, ServerReliable, ServerUnreliable, PROTOCOL_ID,
+};
 use crate::player::{Player, PlayerLocation};
 use crate::{log, multiplayer_role, MultiplayerRole};
 
@@ -88,8 +90,8 @@ fn send_player_pos_to_server(
     mut client: ResMut<RenetClient>,
 ) {
     if let Ok(tf) = player.get_single_mut() {
-        let msg = ClientMessage::PlayerMovement(PlayerLocation(tf.translation.xy()));
-        client.send_message(0, bincode::serialize(&msg).unwrap());
+        let msg = ClientUnreliable::PlayerMovement(PlayerLocation(tf.translation.xy()));
+        client.send_message(1, bincode::serialize(&msg).unwrap());
     }
 }
 
@@ -120,28 +122,34 @@ fn receive_message_system(
     mut lobby: ResMut<Lobby>,
     mut player_data: Query<(&mut Transform, &mut Sprite)>,
 ) {
-    let channel_id = 0;
-    while let Some(message) = client.receive_message(channel_id) {
-        let msg: ServerMessage = bincode::deserialize(&message).unwrap();
-        match msg {
-            ServerMessage::PlayerJoined(id, data) => {
+    while let Some(message) = client.receive_message(0) {
+        match bincode::deserialize(&message).unwrap() {
+            ServerReliable::PlayerJoined(id, data) => {
                 let new_player = Player::create(&mut commands, data, true);
                 lobby.players.insert(id, new_player);
                 log!("Client {} joined", id)
             }
-            ServerMessage::PlayerLeft(id) => {
+            ServerReliable::PlayerLeft(id) => {
                 let player = lobby.players.remove(&id).unwrap();
                 commands.entity(player).despawn();
                 log!("Client {} left", id)
             }
-            ServerMessage::PlayerMoved(id, PlayerLocation(pos)) => {
+        }
+    }
+    while let Some(message) = client.receive_message(1) {
+        match bincode::deserialize(&message).unwrap() {
+            ServerUnreliable::PlayerMoved(id, PlayerLocation(pos)) => {
                 let player = lobby.players.get(&id).copied().unwrap();
                 let (mut tf, _) = player_data.get_mut(player).unwrap();
                 tf.translation.x = pos.x;
                 tf.translation.y = pos.y;
                 //log!("Client {} is now at {}", id, pos)
             }
-            ServerMessage::SyncPlayers(players) => {
+        }
+    }
+    while let Some(message) = client.receive_message(2) {
+        match bincode::deserialize(&message).unwrap() {
+            ServerBlocking::SyncPlayers(players) => {
                 log!("syncing {} players", players.len());
                 for (&client_id, &sync_data) in &players {
                     match lobby.players.get(&client_id) {

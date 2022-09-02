@@ -9,7 +9,9 @@ use bevy_renet::renet::{
 use bevy_renet::RenetServerPlugin;
 
 use crate::log;
-use crate::message::{panic_on_error, ClientMessage, ServerMessage, PROTOCOL_ID};
+use crate::message::{
+    panic_on_error, ClientUnreliable, ServerBlocking, ServerReliable, ServerUnreliable, PROTOCOL_ID,
+};
 use crate::player::{PlayerLocation, PlayerSyncData};
 
 #[derive(Default)]
@@ -41,14 +43,12 @@ pub fn server() {
 }
 
 fn receive_message_system(mut server: ResMut<RenetServer>, mut lobby: ResMut<Lobby>) {
-    let channel_id = 0;
+    let channel_id = 1;
     for client_id in server.clients_id().into_iter() {
         while let Some(message) = server.receive_message(client_id, channel_id) {
-            let msg: ClientMessage = bincode::deserialize(&message).unwrap();
-            //println!("{}: Got Message: {:?}", "server".yellow(), msg);
-            match msg {
-                ClientMessage::PlayerMovement(loc @ PlayerLocation(pos)) => {
-                    let msg = ServerMessage::PlayerMoved(client_id, loc);
+            match bincode::deserialize(&message).unwrap() {
+                ClientUnreliable::PlayerMovement(loc @ PlayerLocation(pos)) => {
+                    let msg = ServerUnreliable::PlayerMoved(client_id, loc);
                     lobby.players.get_mut(&client_id).unwrap().pos = pos;
 
                     server.broadcast_message_except(
@@ -71,20 +71,20 @@ fn handle_events_system(
         match event {
             ServerEvent::ClientConnected(id, _user_data) => {
                 let player_data = PlayerSyncData {
-                    pos: Vec2::new(rand::random::<f32>() * 500.0, rand::random::<f32>() * 500.0),
+                    pos: Vec2::new(rand::random::<f32>() * 300.0, rand::random::<f32>() * 300.0),
                     color: Color::rgb(rand::random(), rand::random(), rand::random()),
                 };
                 lobby.players.insert(*id, player_data);
 
-                let sync_msg = ServerMessage::SyncPlayers(lobby.players.clone());
-                server.send_message(*id, 0, bincode::serialize(&sync_msg).unwrap());
-                let join_msg = ServerMessage::PlayerJoined(*id, player_data);
+                let sync_msg = ServerBlocking::SyncPlayers(lobby.players.clone());
+                server.send_message(*id, 2, bincode::serialize(&sync_msg).unwrap());
+                let join_msg = ServerReliable::PlayerJoined(*id, player_data);
                 server.broadcast_message_except(*id, 0, bincode::serialize(&join_msg).unwrap());
                 log!("Client {} connected", id);
             }
             ServerEvent::ClientDisconnected(id) => {
                 lobby.players.remove(id);
-                let msg = ServerMessage::PlayerLeft(*id);
+                let msg = ServerReliable::PlayerLeft(*id);
                 server.broadcast_message_except(*id, 0, bincode::serialize(&msg).unwrap());
                 log!("Client {} disconnected", id);
             }
