@@ -17,8 +17,8 @@ pub struct Player;
 
 impl Player {
     pub fn create(commands: &mut Commands, data: PlayerSyncData, remote: bool) -> Entity {
-        let player = commands
-            .spawn()
+        let mut player = commands.spawn();
+        player
             .insert_bundle(SpriteBundle {
                 sprite: Sprite {
                     color: data.color,
@@ -26,18 +26,29 @@ impl Player {
                     ..Default::default()
                 },
                 transform: Transform {
-                    translation: data.pos.extend(0.0),
+                    translation: data.pos.extend(0.1),
                     ..Default::default()
                 },
                 ..Default::default()
             })
-            .insert(Player)
-            .id();
+            .insert(Player);
 
         if remote {
-            commands.entity(player).insert(Remote);
+            player.insert(Remote);
+        } else {
+            player.with_children(|commands| {
+                commands.spawn().insert_bundle(SpriteBundle {
+                    sprite: Sprite {
+                        color: Color::GOLD,
+                        custom_size: Some(Vec2::new(10.0, 10.0)),
+                        ..Default::default()
+                    },
+                    transform: Transform::from_xyz(0.0, 0.0, 1.0),
+                    ..default()
+                });
+            });
         }
 
-        player
+        player.id()
     }
 }

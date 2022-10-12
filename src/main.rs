@@ -8,8 +8,7 @@ use self::client::client;
 use self::server::server;
 
 mod client;
-mod message;
-mod player;
+mod common;
 mod server;
 
 #[derive(Clone, Copy)]
