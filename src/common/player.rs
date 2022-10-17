@@ -43,7 +43,7 @@ impl Player {
                         custom_size: Some(Vec2::new(10.0, 10.0)),
                         ..Default::default()
                     },
-                    transform: Transform::from_xyz(0.0, 0.0, 1.0),
+                    transform: Transform::from_xyz(0.0, 0.0, 0.5),
                     ..default()
                 });
             });
